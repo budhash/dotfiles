@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
 
+# Use Git’s colored diff when available
+hash git &>/dev/null;
+if [ $? -eq 0 ]; then
+	function diff() {
+		git diff --no-index --color-words "$@";
+	}
+fi;
+
 # Create a new directory and enter it
 function mkd() {
 	mkdir -p "$@" && cd "$_";
@@ -10,6 +18,62 @@ function cdf() { # short for `cdfinder`
 	cd "$(osascript -e 'tell app "Finder" to POSIX path of (insertion location as alias)')";
 }
 
+# Determine size of a file or total size of a directory
+function fs() {
+	if du -b /dev/null > /dev/null 2>&1; then
+		local arg=-sbh;
+	else
+		local arg=-sh;
+	fi
+	if [[ -n "$@" ]]; then
+		du $arg -- "$@";
+	else
+		du $arg .[^.]* ./*;
+	fi;
+}
+
+# Run `dig` and display the most useful info
+function digga() {
+	dig +nocmd "$1" any +multiline +noall +answer;
+}
+
+# `tre` is a shorthand for `tree` with hidden files and color enabled, ignoring
+# the `.git` directory, listing directories first. The output gets piped into
+# `less` with options to preserve color and line numbers, unless the output is
+# small enough for one screen.
+function tre() {
+	tree -aC -I '.git|node_modules|bower_components' --dirsfirst "$@" | less -FRNX;
+}
+
+#http://static.askapache.com/askapache-bash-profile.txt
+function duc() {
+    du -ch $1
+}
+
+# diffdirs  - Function
+function diffdirs ()
+{
+  #[[ "$#" -gt "0" && $1 == *-h* ]] && ahelp $1 && echo "Usage: $FUNCNAME" && return 2
+  [[ "$#" -lt "2" ]] && echo "Usage: $FUNCNAME dir1 dir2" >&2 && return 2
+  diff -urp -w $1 $2;
+}
+
+function vdiff(){
+	vim -d $1 $2;
+}
+
+# sleeper - Function that sleeps and outputs dots until process id is done running
+function sleeper()
+{
+  #[[ "$#" -lt "1" ]] && echo "Usage: $FUNCNAME <process id>" >&2 && return 2
+  echo -en "\n${2:-.}"; while `command ps -p $1 &>/dev/null`; do echo -n "${2:-.}"; sleep ${3:-1}; done; echo;
+}
+
+function trash() {
+	[[ -z "$1" ]] && return || mv "$@" ~/.Trash/
+}
+
+## Compression
 # Create a .tar.gz archive, using `zopfli`, `pigz` or `gzip` for compression
 function targz() {
 	local tmpFile="${@%/}.tar";
@@ -44,64 +108,6 @@ function targz() {
 	echo "${tmpFile}.gz ($((zippedSize / 1000)) kB) created successfully.";
 }
 
-# Determine size of a file or total size of a directory
-function fs() {
-	if du -b /dev/null > /dev/null 2>&1; then
-		local arg=-sbh;
-	else
-		local arg=-sh;
-	fi
-	if [[ -n "$@" ]]; then
-		du $arg -- "$@";
-	else
-		du $arg .[^.]* ./*;
-	fi;
-}
-
-# Use Git’s colored diff when available
-hash git &>/dev/null;
-if [ $? -eq 0 ]; then
-	function diff() {
-		git diff --no-index --color-words "$@";
-	}
-fi;
-
-# Create a data URL from a file
-function dataurl() {
-	local mimeType=$(file -b --mime-type "$1");
-	if [[ $mimeType == text/* ]]; then
-		mimeType="${mimeType};charset=utf-8";
-	fi
-	echo "data:${mimeType};base64,$(openssl base64 -in "$1" | tr -d '\n')";
-}
-
-# Create a git.io short URL
-function gitio() {
-	if [ -z "${1}" -o -z "${2}" ]; then
-		echo "Usage: \`gitio slug url\`";
-		return 1;
-	fi;
-	curl -i https://git.io/ -F "url=${2}" -F "code=${1}";
-}
-
-# Start an HTTP server from a directory, optionally specifying the port
-function server() {
-	local port="${1:-8000}";
-	sleep 1 && open "http://localhost:${port}/" &
-	# Set the default Content-Type to `text/plain` instead of `application/octet-stream`
-	# And serve everything as UTF-8 (although not technically correct, this doesn’t break anything for binary files)
-	python -c $'import SimpleHTTPServer;\nmap = SimpleHTTPServer.SimpleHTTPRequestHandler.extensions_map;\nmap[""] = "text/plain";\nfor key, value in map.items():\n\tmap[key] = value + ";charset=UTF-8";\nSimpleHTTPServer.test();' "$port";
-}
-
-# Start a PHP server from a directory, optionally specifying the port
-# (Requires PHP 5.4.0+.)
-function phpserver() {
-	local port="${1:-4000}";
-	local ip=$(ipconfig getifaddr en1);
-	sleep 1 && open "http://${ip}:${port}/" &
-	php -S "${ip}:${port}";
-}
-
 # Compare original and gzipped file size
 function gz() {
 	local origsize=$(wc -c < "$1");
@@ -111,51 +117,61 @@ function gz() {
 	printf "gzip: %d bytes (%2.2f%%)\n" "$gzipsize" "$ratio";
 }
 
-# Syntax-highlight JSON strings or files
-# Usage: `json '{"foo":42}'` or `echo '{"foo":42}' | json`
-function json() {
-	if [ -t 0 ]; then # argument
-		python -mjson.tool <<< "$*" | pygmentize -l javascript;
-	else # pipe
-		python -mjson.tool | pygmentize -l javascript;
-	fi;
+function pack() {
+    [[ -z "$1" ]] && return || _tarDir=$1
+    [ -d "$_tarDir" ] || { echo "directory [$_tarDir] does not exists"; return; }
+    _tarFile=$(basename $_tarDir)
+    tar -zcvf $_tarFile.tar.gz $_tarDir
 }
 
-# Run `dig` and display the most useful info
-function digga() {
-	dig +nocmd "$1" any +multiline +noall +answer;
+function unpack() {
+    [[ -z "$1" ]] && return || _tarFile=$1
+    [ -f "$_tarFile" ] || { echo "file [$_tarFile] does not exists"; return; }
+    tar -zxvf $_tarFile
 }
 
-# UTF-8-encode a string of Unicode symbols
-function escape() {
-	printf "\\\x%s" $(printf "$@" | xxd -p -c1 -u);
-	# print a newline unless we’re piping the output to another program
-	if [ -t 1 ]; then
-		echo ""; # newline
-	fi;
+# grepp - Function that searches current directory for match
+function grepd()
+{
+  #[[ "$#" -gt "0" && $1 == *-h* ]] && ahelp $1 && echo "Usage: $FUNCNAME" && return 2
+  export GREP_OPTIONS='--color=always'
+  export GREP_COLOR='1;34;10'
+  command grep -r --color=always "$@" .
 }
 
-# Decode \x{ABCD}-style Unicode escape sequences
-function unidecode() {
-	perl -e "binmode(STDOUT, ':utf8'); print \"$@\"";
-	# print a newline unless we’re piping the output to another program
-	if [ -t 1 ]; then
-		echo ""; # newline
-	fi;
+# grepp - Function that searches current directory for match
+function grepdsv()
+{
+  export GREP_OPTIONS='--color=always'
+  export GREP_COLOR='1;34;10'
+  command grep -r --color=always "$@" . | grep -v "Binary file" | grep -v "svn-base"
 }
 
-# Get a character’s Unicode code point
-function codepoint() {
-	perl -e "use utf8; print sprintf('U+%04X', ord(\"$@\"))";
-	# print a newline unless we’re piping the output to another program
-	if [ -t 1 ]; then
-		echo ""; # newline
-	fi;
+# grepc - Function shortcut for grep with color
+function grepc()
+{
+  #[[ "$#" -gt "0" && $1 == *-h* ]] && ahelp $1 && echo "Usage: $FUNCNAME" && return 2
+  export GREP_OPTIONS='--color=always'
+  export GREP_COLOR='1;33;10'
+  #export GREP_COLOR=`echo -en "\e[1;3$(( $RANDOM % 7 + 1 ))"`
+  command grep -i --color=always "$@" -r .
 }
 
+# grepp - ps aux | grep
+function grepp()
+{
+  #[[ "$#" -gt "0" && $1 == *-h* ]] && ahelp $1 && echo "Usage: $FUNCNAME" && return 2
+  export GREP_OPTIONS='--color=always'
+  export GREP_COLOR='1;33;10'
+  #export GREP_COLOR=`echo -en "\e[1;3$(( $RANDOM % 7 + 1 ))"`
+  command ps aux | grep -i --color=always "$@"
+}
+
+
+## openssl
 # Show all the names (CNs and SANs) listed in the SSL certificate
 # for a given domain
-function getcertnames() {
+function oslcertnames() {
 	if [ -z "${1}" ]; then
 		echo "ERROR: No domain specified.";
 		return 1;
@@ -187,29 +203,104 @@ function getcertnames() {
 	fi;
 }
 
-# `s` with no arguments opens the current directory in Sublime Text, otherwise
-# opens the given location
-function s() {
-	if [ $# -eq 0 ]; then
-		subl .;
-	else
-		subl "$@";
+function osllistcert(){
+	[[ -z "$1" ]] && return	|| local _inFile=$1
+	[[ -z "$2" ]] && local _type=PEM || local _type=$2
+	openssl x509 -inform $_type -noout -text -noout -in $_inFile
+}
+
+function osllistpk(){
+	[[ -z "$1" ]] && return	|| local _inFile=$1
+	[[ -z "$2" ]] && local _type=PEM || local _type=$2
+	openssl rsa -inform $_type -noout -text -noout -in $_inFile
+}
+
+function oslder2pemcert(){
+	[[ -z "$1" ]] && return	|| local _inFile=$1
+	local _inFileName="${_inFile%.*}"
+	openssl x509 -inform der -in $_inFile -out ${_inFileName}.pem
+}
+
+function oslder2pempk(){
+	[[ -z "$1" ]] && return	|| local _inFile=$1
+	local _inFileName="${_inFile%.*}"
+	openssl rsa -inform DER -in $_inFile -out ${_inFileName}.pem
+}
+
+## mvn
+function mvnc(){
+	mvn clean install
+}
+
+function mvni(){
+	mvn clean install -DskipTests
+}
+
+## git
+function gitsync() {
+    git fetch upstream && git checkout develop && git merge upstream/develop && git push origin develop
+}
+
+function gitdel() {
+    if [[ -z "$1" ]] ; then
+        git-del [branch]
+    else
+        git branch -d "$1" && git push origin --delete "$1"
+    fi
+}
+
+# strings
+# nob - Function remove blank lines from output
+# cat file | nob
+function nob()
+{ [[ $# -eq 0 ]] && exec grep -v ^$|sed -e '/[^ \t]\{1,\}/!d'; }
+
+# nobl - Function remove leading whitespace
+# cat file | nobl
+function nobl()
+{ [[ $# -eq 0 ]] && exec sed -e 's/^[ \t]*//'; }
+
+# cat file | nobt
+function nobt()
+{ [[ $# -eq 0 ]] && exec sed -e 's/[ \t]*$//'; }
+
+# nobb - Function to remove both leading and trailing whitespace
+# cat file | nobb
+function nobb()
+{ [[ $# -eq 0 ]] && exec sed -e 's/^[ \t]*//;s/[ \t]*$//' -e '/[^ \t]\{1,\}/!d'; }
+
+# UTF-8-encode a string of Unicode symbols
+function escape() {
+	printf "\\\x%s" $(printf "$@" | xxd -p -c1 -u);
+	# print a newline unless we’re piping the output to another program
+	if [ -t 1 ]; then
+		echo ""; # newline
 	fi;
 }
 
-# `a` with no arguments opens the current directory in Atom Editor, otherwise
-# opens the given location
-function a() {
-	if [ $# -eq 0 ]; then
-		atom .;
-	else
-		atom "$@";
+# Decode \x{ABCD}-style Unicode escape sequences
+function unidecode() {
+	perl -e "binmode(STDOUT, ':utf8'); print \"$@\"";
+	# print a newline unless we’re piping the output to another program
+	if [ -t 1 ]; then
+		echo ""; # newline
 	fi;
 }
 
-# `v` with no arguments opens the current directory in Vim, otherwise opens the
+# Get a character’s Unicode code point
+function codepoint() {
+	perl -e "use utf8; print sprintf('U+%04X', ord(\"$@\"))";
+	# print a newline unless we’re piping the output to another program
+	if [ -t 1 ]; then
+		echo ""; # newline
+	fi;
+}
+
+
+## Open
+# `ov` with no arguments opens the current directory in Vim, otherwise opens the
 # given location
-function v() {
+function ov() {
 	if [ $# -eq 0 ]; then
 		vim .;
 	else
@@ -227,10 +318,93 @@ function o() {
 	fi;
 }
 
-# `tre` is a shorthand for `tree` with hidden files and color enabled, ignoring
-# the `.git` directory, listing directories first. The output gets piped into
-# `less` with options to preserve color and line numbers, unless the output is
-# small enough for one screen.
-function tre() {
-	tree -aC -I '.git|node_modules|bower_components' --dirsfirst "$@" | less -FRNX;
+# `os` with no arguments opens the current directory in Sublime Text, otherwise
+# opens the given location
+function os() {
+	if [ $# -eq 0 ]; then
+		subl .;
+	else
+		subl "$@";
+	fi;
+}
+
+# `oa` with no arguments opens the current directory in Atom Editor, otherwise
+# opens the given location
+function oa() {
+	if [ $# -eq 0 ]; then
+		atom .;
+	else
+		atom "$@";
+	fi;
+}
+
+# `om` with no arguments opens the current directory in TextMate Editor, otherwise
+# opens the given location
+function om() {
+	if [ $# -eq 0 ]; then
+		mate .;
+	else
+		mate "$@";
+	fi;
+}
+
+# `ob` with no arguments opens the current directory in BBEdit Editor, otherwise
+# opens the given location
+function ob() {
+	if [ $# -eq 0 ]; then
+		bbedit .;
+	else
+		bbedit "$@";
+	fi;
+}
+
+# External
+# Create a git.io short URL
+function gitio() {
+	if [ -z "${1}" -o -z "${2}" ]; then
+		echo "Usage: \`gitio slug url\`";
+		return 1;
+	fi;
+	curl -i https://git.io/ -F "url=${2}" -F "code=${1}";
+}
+
+
+## Misc
+
+# Create a data URL from a file
+function dataurl() {
+	local mimeType=$(file -b --mime-type "$1");
+	if [[ $mimeType == text/* ]]; then
+		mimeType="${mimeType};charset=utf-8";
+	fi
+	echo "data:${mimeType};base64,$(openssl base64 -in "$1" | tr -d '\n')";
+}
+
+# Start an HTTP server from a directory, optionally specifying the port
+function server() {
+	local port="${1:-8000}";
+	sleep 1 && open "http://localhost:${port}/" &
+	# Set the default Content-Type to `text/plain` instead of `application/octet-stream`
+	# And serve everything as UTF-8 (although not technically correct, this doesn’t break anything for binary files)
+	python -c $'import SimpleHTTPServer;\nmap = SimpleHTTPServer.SimpleHTTPRequestHandler.extensions_map;\nmap[""] = "text/plain";\nfor key, value in map.items():\n\tmap[key] = value + ";charset=UTF-8";\nSimpleHTTPServer.test();' "$port";
+}
+
+# Start a PHP server from a directory, optionally specifying the port
+# (Requires PHP 5.4.0+.)
+function phpserver() {
+	local port="${1:-4000}";
+	local ip=$(ipconfig getifaddr en1);
+	sleep 1 && open "http://${ip}:${port}/" &
+	php -S "${ip}:${port}";
+}
+
+
+# Syntax-highlight JSON strings or files
+# Usage: `json '{"foo":42}'` or `echo '{"foo":42}' | json`
+function json() {
+	if [ -t 0 ]; then # argument
+		python -mjson.tool <<< "$*" | pygmentize -l javascript;
+	else # pipe
+		python -mjson.tool | pygmentize -l javascript;
+	fi;
 }

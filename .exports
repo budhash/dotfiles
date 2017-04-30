@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Make vim the default editor.
-export EDITOR='vim';
+export EDITOR='mate';
 
 # Enable persistent REPL history for `node`.
 export NODE_REPL_HISTORY=~/.node_history;
@@ -14,10 +14,15 @@ export NODE_REPL_MODE='sloppy';
 export PYTHONIOENCODING='UTF-8';
 
 # Increase Bash history size. Allow 32³ entries; the default is 500.
-export HISTSIZE='32768';
+export HISTSIZE='500000';
 export HISTFILESIZE="${HISTSIZE}";
 # Omit duplicates and commands that begin with a space from history.
 export HISTCONTROL='ignoreboth';
+# whenever displaying the prompt, write the previous line to disk
+# so new shell gets the history lines from all previous shells
+export PROMPT_COMMAND='history -a'
+# don't put duplicate lines in the history
+#export HISTCONTROL=ignoredups
 
 # Prefer US English and use UTF-8.
 export LANG='en_US.UTF-8';
@@ -28,3 +33,15 @@ export LESS_TERMCAP_md="${yellow}";
 
 # Don’t clear the screen after quitting a manual page.
 export MANPAGER='less -X';
+
+#java
+export JAVA_8_HOME=$(/usr/libexec/java_home -v1.8)
+export JAVA_7_HOME=$(/usr/libexec/java_home -v1.7)
+
+#default java8
+export JAVA_HOME=$JAVA_8_HOME
+
+#SSL certificate problem - `ruby -ropenssl -e "p OpenSSL::X509::DEFAULT_CERT_FILE"`
+export SSL_CERT_FILE=/etc/openssl/cert.pem
+
+#export PATH=$PATH:$JAVA_HOME/bin
